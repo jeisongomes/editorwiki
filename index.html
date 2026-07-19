@@ -17,13 +17,14 @@
     .preview-pane h1 { border-bottom: 1px solid #a2a9b1; font-size: 1.8em; margin-bottom: 0.5em; }
     .preview-pane h2 { border-bottom: 1px solid #a2a9b1; font-size: 1.5em; margin: 1em 0 0.5em; }
     .preview-pane h3 { font-size: 1.2em; margin: 1em 0 0.5em; }
-    .preview-pane a { color: #0645ad; }
+    .preview-pane a { color: #0645ad; text-decoration: none; }
+    .preview-pane a:hover { text-decoration: underline; }
     .preview-pane a.new { color: #ba0000; }
-    .preview-pane ul, .preview-pane ol { margin-left: 1.5em; }
+    .preview-pane ul, .preview-pane ol { margin-left: 1.5em; margin-bottom: 1em; }
     .preview-pane code { background: #f8f9fa; padding: 2px 4px; }
     .preview-pane pre { background: #f8f9fa; padding: 12px; overflow-x: auto; }
     .preview-pane blockquote { border-left: 3px solid #c8ccd1; margin: 1em 0; padding-left: 1em; color: #54595d; }
-    .preview-pane table { border-collapse: collapse; margin: 1em 0; }
+    .preview-pane table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     .preview-pane th, .preview-pane td { border: 1px solid #a2a9b1; padding: 6px 12px; }
     .preview-pane th { background: #eaecf0; }
     .infobox { float: right; width: 260px; margin: 0 0 1em 1em; border: 1px solid #a2a9b1; background: #f8f9fa; padding: 8px; font-size: 0.9em; }
@@ -47,19 +48,25 @@
     <div class="preview-pane" id="preview"></div>
   </div>
 
-  <script src="[unpkg.com](https://unpkg.com/wtf_wikipedia@latest/builds/wtf_wikipedia.min.js)"></script>
+  <!-- Correção dos scripts: Importando a biblioteca principal e o plugin de HTML -->
+  <script src="https://unpkg.com/wtf_wikipedia@latest/builds/wtf_wikipedia.min.js"></script>
+  <script src="https://unpkg.com/wtf-plugin-html@latest/builds/wtf-plugin-html.min.js"></script>
   <script>
+    // Ativa o plugin de renderização HTML
+    wtf.plugin(wtfHtml);
+
     const editor = document.getElementById('code-editor');
     const preview = document.getElementById('preview');
     let timeout;
 
     // Parser de wikitext para HTML
     function parseWikitext(wikitext) {
+      if (!wikitext.trim()) return '';
       try {
         const doc = wtf(wikitext);
+        // O método .html() passa a existir por conta do plugin adicionado acima
         let html = doc.html() || '';
         
-        // Ajustes adicionais que o wtf_wikipedia não cobre bem
         html = postProcess(html, wikitext);
         return html;
       } catch (e) {
@@ -68,12 +75,8 @@
     }
 
     function postProcess(html, original) {
-      // Adiciona classes para links inexistentes (simulação)
-      // Em produção, você verificaria via API quais páginas existem
-      
-      // Processa templates não reconhecidos como placeholders
-      html = html.replace(/\{\{([^}]+)\}\}/g, '<span style="background:#ffe0e0;padding:2px 4px;border-radius:3px;">{{$1}}</span>');
-      
+      // Processa predefinições/templates não reconhecidos como placeholders visuais
+      html = html.replace(/\{\{([^}]+)\}\}/g, '<span style="background:#ffe0e0;padding:2px 4px;border-radius:3px;border:1px dashed #ff9999;">{{$1}}</span>');
       return html;
     }
 
@@ -101,35 +104,26 @@
 
     editor.addEventListener('input', updatePreview);
 
-    // Exemplo inicial
-    editor.value = `= Título do Artigo =
+    // Exemplo inicial ajustado para sintaxe padrão MediaWiki
+    editor.value = `== Título do Artigo ==
 
 '''Texto em negrito''' e ''texto em itálico''.
 
 == Seção ==
 
-Um [[link interno]] e um [[exemplo.com](https://exemplo.com) link externo].
+Um [[link interno]] e um [https://exemplo.com link externo].
 
 * Item 1
 * Item 2
 * Item 3
 
-{| class="wikitable"
-|-
-! Cabeçalho 1 !! Cabeçalho 2
-|-
-| Célula 1 || Célula 2
-|-
-| Célula 3 || Célula 4
-|}
-
 === Subseção ===
 
 <blockquote>Uma citação em bloco.</blockquote>
 
-<ref>Referência de exemplo</ref>
+{{Predefinição de Exemplo}}
 
-[[Categoria:Exemplo]]`;
+<ref>Referência de exemplo</ref>`;
 
     updatePreview();
   </script>
