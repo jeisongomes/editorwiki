@@ -86,35 +86,57 @@
       html = html.replace(/\{\{([^}]+)\}\}/g, '<span style="background:#ffe0e0;padding:2px 4px;border-radius:3px;border:1px dashed #ff9999;">{{$1}}</span>');
 
       // 7. Tabelas Wiki básico ({| ... |})
-      // Transforma quebras de linha temporárias para processar o bloco da tabela
       html = html.replace(/^\{\|([\s\S]*?)^\|\}/gm, (match, tableContent) => {
-        let rows = tableContent.split(/^\|-/gm);
-        let tableHtml = '<table>';
-        
-        rows.forEach(row => {
-          if (!row.trim()) return;
-          tableHtml += '<tr>';
-          
-          // Processa cabeçalhos (!)
-          let headers = row.split(/^\!| \!\! /gm);
-          headers.forEach(h => {
-            if (h.trim()) tableHtml += `<th>${h.trim().replace(/^class=".*?"\s*\|/, '')}</th>`;
-          });
+        // Divide o conteúdo por linhas limpas
+        let lines = tableContent.split('\n');
+        let tableHtml = '<table class="wikitable">';
+        let inRow = false;
 
-          // Processa células (|)
-          let cells = row.split(/^\|| \|\| /gm);
-          cells.forEach(c => {
-            if (c.trim() && !c.startsWith('!')) {
-              tableHtml += `<td>${c.trim().replace(/^class=".*?"\s*\|/, '')}</td>`;
-            }
-          });
+        lines.forEach(line => {
+          line = line.trim();
+          if (!line) return;
 
-          tableHtml += '</tr>';
+          // Ignora ou processa a linha de abertura de atributos da tabela
+          if (line.startsWith('class=') || line.startsWith('style=')) return;
+
+          // Nova linha da tabela (|-)
+          if (line.startsWith('|-')) {
+            if (inRow) tableHtml += '</tr>';
+            tableHtml += 'tr>';
+            inRow = true;
+            return;
+          }
+
+          // Se ainda não abriu nenhuma linha explicitamente, abre a primeira
+          if (!inRow && (line.startsWith('|') || line.startsWith('!'))) {
+            tableHtml += '<tr>';
+            inRow = true;
+          }
+
+          // Processa Linhas de Cabeçalho (!)
+          if (line.startsWith('!')) {
+            // Remove o '!' inicial e divide caso use '!!' na mesma linha
+            let headers = line.substring(1).split('!!');
+            headers.forEach(h => {
+              tableHtml += `<th>${h.trim()}</th>`;
+            });
+          } 
+          // Processa Linhas de Célula Comum (|)
+          else if (line.startsWith('|')) {
+            // Remove o '|' inicial e divide caso use '||' na mesma linha
+            let cells = line.substring(1).split('||');
+            cells.forEach(c => {
+              tableHtml += `<td>${c.trim()}</td>`;
+            });
+          }
         });
-        
+
+        if (inRow) tableHtml += '</tr>';
         tableHtml += '</table>';
-        return tableHtml;
-      });
+        
+        // Correção de fechamento de tags corrompidas pelo comportamento do motor regex
+        return tableHtml.replace(/tr&gt;/g, '<tr>');
+      });      
 
       // 8. Listas não ordenadas (*) e ordenadas (#)
       html = html.replace(/^\*\s*(.*?)$/gm, '<ul><li>$1</li></ul>');
