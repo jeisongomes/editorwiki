@@ -14,19 +14,18 @@
     #code-editor { width: 100%; height: 100%; font-family: monospace; font-size: 14px; border: none; resize: none; outline: none; }
     .preview-pane { background: #fff; }
     /* Estilos wiki básicos */
-    .preview-pane h1 { border-bottom: 1px solid #a2a9b1; font-size: 1.8em; margin-bottom: 0.5em; }
-    .preview-pane h2 { border-bottom: 1px solid #a2a9b1; font-size: 1.5em; margin: 1em 0 0.5em; }
+    .preview-pane h1 { border-bottom: 1px solid #a2a9b1; font-size: 1.8em; margin-bottom: 0.5em; padding-bottom: 0.2em; }
+    .preview-pane h2 { border-bottom: 1px solid #a2a9b1; font-size: 1.5em; margin: 1em 0 0.5em; padding-bottom: 0.2em; }
     .preview-pane h3 { font-size: 1.2em; margin: 1em 0 0.5em; }
     .preview-pane a { color: #0645ad; text-decoration: none; }
     .preview-pane a:hover { text-decoration: underline; }
-    .preview-pane a.new { color: #ba0000; }
     .preview-pane ul, .preview-pane ol { margin-left: 1.5em; margin-bottom: 1em; }
-    .preview-pane code { background: #f8f9fa; padding: 2px 4px; }
-    .preview-pane pre { background: #f8f9fa; padding: 12px; overflow-x: auto; }
+    .preview-pane code { background: #f8f9fa; padding: 2px 4px; font-family: monospace; }
+    .preview-pane pre { background: #f8f9fa; padding: 12px; overflow-x: auto; margin: 1em 0; border: 1px solid #eaecf0; }
     .preview-pane blockquote { border-left: 3px solid #c8ccd1; margin: 1em 0; padding-left: 1em; color: #54595d; }
     .preview-pane table { border-collapse: collapse; margin: 1em 0; width: 100%; }
     .preview-pane th, .preview-pane td { border: 1px solid #a2a9b1; padding: 6px 12px; }
-    .preview-pane th { background: #eaecf0; }
+    .preview-pane th { background: #eaecf0; text-align: left; }
     .infobox { float: right; width: 260px; margin: 0 0 1em 1em; border: 1px solid #a2a9b1; background: #f8f9fa; padding: 8px; font-size: 0.9em; }
   </style>
 </head>
@@ -48,35 +47,91 @@
     <div class="preview-pane" id="preview"></div>
   </div>
 
-  <!-- Correção dos scripts: Importando a biblioteca principal e o plugin de HTML -->
-  <script src="https://unpkg.com/wtf_wikipedia@latest/builds/wtf_wikipedia.min.js"></script>
-  <script src="https://unpkg.com/wtf-plugin-html@latest/builds/wtf-plugin-html.min.js"></script>
   <script>
-    // Ativa o plugin de renderização HTML
-    wtf.plugin(wtfHtml);
-
     const editor = document.getElementById('code-editor');
     const preview = document.getElementById('preview');
     let timeout;
 
-    // Parser de wikitext para HTML
+    // Parser nativo e customizado para Wikitext (MediaWiki padrão)
     function parseWikitext(wikitext) {
       if (!wikitext.trim()) return '';
-      try {
-        const doc = wtf(wikitext);
-        // O método .html() passa a existir por conta do plugin adicionado acima
-        let html = doc.html() || '';
-        
-        html = postProcess(html, wikitext);
-        return html;
-      } catch (e) {
-        return `<p style="color: red;">Erro no parsing: ${e.message}</p>`;
-      }
-    }
 
-    function postProcess(html, original) {
-      // Processa predefinições/templates não reconhecidos como placeholders visuais
+      let html = wikitext;
+
+      // 1. Escapar caracteres HTML básicos para segurança
+      html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      // Restaurar tags controladas e permitidas (ex: ref, blockquote)
+      html = html.replace(/&lt;ref&gt;([\s\S]*?)&lt;\/ref&gt;/g, '<sup class="reference">[$1]</sup>');
+      html = html.replace(/&lt;blockquote&gt;([\s\S]*?)&lt;\/blockquote&gt;/g, '<blockquote>$1</blockquote>');
+
+      // 2. Títulos (Headers) - Processar do menor para o maior para evitar conflitos de Regex
+      html = html.replace(/^===(.*?)===$/gm, 'h3>$1</h3>');
+      html = html.replace(/^==(.*?)==$/gm, '<h2>$1</h2>');
+      html = html.replace(/^=(.*?)=$/gm, '<h1>$1</h1>');
+      // Correção caso alguma tag interna tenha quebrado
+      html = html.replace(/h3&gt;/g, '<h3>');
+
+      // 3. Formatação de Texto (Negrito com três apostrófos e Itálico com dois)
+      html = html.replace(/'''([\s\S]*?)'''/g, '<strong>$1</strong>');
+      html = html.replace(/''([\s\S]*?)''/g, '<em>$1</em>');
+
+      // 4. Links Internos [[Página|Texto]] ou [[Página]]
+      html = html.replace(/\[\[([^|\]]+)\|([^\]]+)\]\]/g, '<a href="#$1">$2</a>');
+      html = html.replace(/\[\[([^\]]+)\]\]/g, '<a href="#$1">$1</a>');
+
+      // 5. Links Externos [URL Texto] ou URL direta
+      html = html.replace(/\[(https?:\/\/[^\s\]]+)\s+([^\]]+)\]/g, '<a href="$1" target="_blank">$2</a>');
+
+      // 6. Predefinições / Templates {{Nome|parametros}}
       html = html.replace(/\{\{([^}]+)\}\}/g, '<span style="background:#ffe0e0;padding:2px 4px;border-radius:3px;border:1px dashed #ff9999;">{{$1}}</span>');
+
+      // 7. Tabelas Wiki básico ({| ... |})
+      // Transforma quebras de linha temporárias para processar o bloco da tabela
+      html = html.replace(/^\{\|([\s\S]*?)^\|\}/gm, (match, tableContent) => {
+        let rows = tableContent.split(/^\|-/gm);
+        let tableHtml = '<table>';
+        
+        rows.forEach(row => {
+          if (!row.trim()) return;
+          tableHtml += '<tr>';
+          
+          // Processa cabeçalhos (!)
+          let headers = row.split(/^\!| \!\! /gm);
+          headers.forEach(h => {
+            if (h.trim()) tableHtml += `<th>${h.trim().replace(/^class=".*?"\s*\|/, '')}</th>`;
+          });
+
+          // Processa células (|)
+          let cells = row.split(/^\|| \|\| /gm);
+          cells.forEach(c => {
+            if (c.trim() && !c.startsWith('!')) {
+              tableHtml += `<td>${c.trim().replace(/^class=".*?"\s*\|/, '')}</td>`;
+            }
+          });
+
+          tableHtml += '</tr>';
+        });
+        
+        tableHtml += '</table>';
+        return tableHtml;
+      });
+
+      // 8. Listas não ordenadas (*) e ordenadas (#)
+      html = html.replace(/^\*\s*(.*?)$/gm, '<ul><li>$1</li></ul>');
+      html = html.replace(/^#\s*(.*?)$/gm, '<ol><li>$1</li></ol>');
+      
+      // Agrupa listas adjacentes limpas para evitar tags soltas
+      html = html.replace(/<\/ul>\s*<ul>/g, '');
+      html = html.replace(/<\/ol>\s*<ol>/g, '');
+
+      // 9. Parágrafos normais (linhas vazias viram quebras de bloco)
+      html = html.split(/\n\n+/).map(para => {
+        if (!para.trim() || para.startsWith('<h') || para.startsWith('<table') || para.startsWith('<ul') || para.startsWith('<ol') || para.startsWith('<blockquote')) {
+          return para;
+        }
+        return `<p>${para.replace(/\n/g, '<br>')}</p>`;
+      }).join('\n');
+
       return html;
     }
 
@@ -86,7 +141,7 @@
       timeout = setTimeout(() => {
         const wikitext = editor.value;
         preview.innerHTML = parseWikitext(wikitext);
-      }, 300);
+      }, 150); // Reduzido para 150ms para parecer ainda mais instantâneo
     }
 
     // Insere tags ao redor da seleção
@@ -104,14 +159,16 @@
 
     editor.addEventListener('input', updatePreview);
 
-    // Exemplo inicial ajustado para sintaxe padrão MediaWiki
+    // Exemplo inicial ajustado
     editor.value = `== Título do Artigo ==
 
 '''Texto em negrito''' e ''texto em itálico''.
 
 == Seção ==
 
-Um [[link interno]] e um [https://exemplo.com link externo].
+Um [[Página Principal|link interno customizado]] e um [[link interno simples]].
+
+Também funciona com um [https://exemplo.com link externo com texto].
 
 * Item 1
 * Item 2
@@ -119,11 +176,20 @@ Um [[link interno]] e um [https://exemplo.com link externo].
 
 === Subseção ===
 
-<blockquote>Uma citação em bloco.</blockquote>
+<blockquote>Uma citação em bloco estruturada para destacar textos.</blockquote>
 
 {{Predefinição de Exemplo}}
 
-<ref>Referência de exemplo</ref>`;
+<ref>Referência número 1</ref>
+
+{| class="wikitable"
+!-
+! Cabeçalho A !! Cabeçalho B
+|-
+| Célula 1 || Célula 2
+|-
+| Célula 3 || Célula 4
+|}`;
 
     updatePreview();
   </script>
